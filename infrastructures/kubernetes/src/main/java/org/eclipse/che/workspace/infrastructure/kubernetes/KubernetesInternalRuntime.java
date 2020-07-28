@@ -46,6 +46,8 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
@@ -65,6 +67,7 @@ import org.eclipse.che.api.workspace.server.hc.ServersChecker;
 import org.eclipse.che.api.workspace.server.hc.ServersCheckerFactory;
 import org.eclipse.che.api.workspace.server.hc.probe.ProbeResult;
 import org.eclipse.che.api.workspace.server.hc.probe.ProbeResult.ProbeStatus;
+import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
 import org.eclipse.che.api.workspace.server.hc.probe.ProbeScheduler;
 import org.eclipse.che.api.workspace.server.hc.probe.WorkspaceProbes;
 import org.eclipse.che.api.workspace.server.hc.probe.WorkspaceProbesFactory;
@@ -418,8 +421,15 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
       final CompletableFuture<Void> serversAndProbesFuture = new CompletableFuture<>();
       final String machineName = machine.getName();
       final RuntimeIdentity runtimeId = getContext().getIdentity();
-      final ServersChecker serverCheck =
-          serverCheckerFactory.create(runtimeId, machineName, machine.getServers());
+      ServersChecker serverCheck;
+      try {
+        serverCheck = serverCheckerFactory.create(runtimeId, machineName, machine.getServers());
+      } catch (ExecutionException e1) { 
+          serversAndProbesFuture.completeExceptionally(e1);
+          TracingTags.setErrorStatus(tracingSpan, e1);
+          tracingSpan.finish();
+          return serversAndProbesFuture;
+      }
       final CompletableFuture<?> serversReadyFuture;
       LOG.debug(
           "Performing servers check for machine '{}' in workspace '{}'",
@@ -457,6 +467,8 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
                       new ServerLivenessHandler());
                 } catch (InfrastructureException iex) {
                   serversAndProbesFuture.completeExceptionally(iex);
+                } catch (ExecutionException e) {
+                  serversAndProbesFuture.completeExceptionally(e);
                 }
                 serversAndProbesFuture.complete(null);
                 tracingSpan.finish();
@@ -613,7 +625,7 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
 
     // needed for resolution later on, even though n routes are actually created by ingress
     // /workspace{wsid}/server-{port} => service({wsid}):server-port => pod({wsid}):{port}
-    List<Ingress> readyIngresses = createIngresses(k8sEnv, workspaceId);
+    List<Future<Ingress>> readyIngresses = createIngresses(k8sEnv, workspaceId);
 
     listenEvents();
 
@@ -706,7 +718,7 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
 
   @Traced
   @SuppressWarnings("WeakerAccess") // package-private so that interception is possible
-  List<Ingress> createIngresses(KubernetesEnvironment env, String workspaceId)
+  List<Future<Ingress>> createIngresses(KubernetesEnvironment env, String workspaceId)
       throws InfrastructureException {
     TracingTags.WORKSPACE_ID.set(workspaceId);
     return createAndWaitReady(env.getIngresses().values());
@@ -836,6 +848,16 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
                                 + "Please report a bug. If possible, include the details from Che devfile and server log in bug report (your admin can help with that)",
                             workspaceId));
                   });
+      CompletableFuture<Map<String, ServerImpl>> servers = new CompletableFuture<>();
+      ForkJoinPool.commonPool()
+          .execute(
+              () -> {
+                try {
+                  servers.complete(serverResolver.resolve(machineName));
+                } catch (InterruptedException | ExecutionException e) {
+                  servers.completeExceptionally(e);
+                }
+              });
       machines.put(
           getContext().getIdentity(),
           new KubernetesMachineImpl(
@@ -845,7 +867,7 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
               container.getName(),
               MachineStatus.STARTING,
               machineConfig.getAttributes(),
-              serverResolver.resolve(machineName)));
+              servers));
       eventPublisher.sendStartingEvent(machineName, getContext().getIdentity());
     }
   }
@@ -897,7 +919,7 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
     runtimeStates.remove(getContext().getIdentity());
   }
 
-  private List<Ingress> createAndWaitReady(Collection<Ingress> ingresses)
+  private List<Future<Ingress>> createAndWaitReady(Collection<Ingress> ingresses)
       throws InfrastructureException {
     List<Ingress> createdIngresses = new ArrayList<>();
     for (Ingress ingress : ingresses) {
@@ -908,12 +930,12 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
         getContext().getIdentity().getWorkspaceId());
 
     // wait for LB ip
-    List<Ingress> readyIngresses = new ArrayList<>();
+    List<Future<Ingress>> readyIngresses = new ArrayList<>();
     for (Ingress ingress : createdIngresses) {
-      Ingress actualIngress =
+      Future<Ingress> actualIngress =
           namespace
               .ingresses()
-              .wait(
+              .waitInFuture(
                   ingress.getMetadata().getName(),
                   // Smaller value of ingress and start timeout should be used
                   Math.min(ingressStartTimeoutMillis, startSynchronizer.getStartTimeoutMillis()),

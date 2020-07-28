@@ -12,6 +12,7 @@
 package org.eclipse.che.api.core.model.workspace.runtime;
 
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Runtime information about machine.
@@ -36,8 +37,10 @@ public interface Machine {
    *     }
    * }
    * </pre>
+ * @throws ExecutionException 
+ * @throws InterruptedException 
    */
-  Map<String, ? extends Server> getServers();
+  Map<String, ? extends Server> getServers() throws InterruptedException, ExecutionException;
 
   MachineStatus getStatus();
 }

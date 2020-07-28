@@ -11,8 +11,11 @@
  */
 package org.eclipse.che.workspace.infrastructure.kubernetes.model;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.CollectionTable;
@@ -34,6 +37,7 @@ import javax.persistence.Table;
 import org.eclipse.che.api.core.model.workspace.runtime.Machine;
 import org.eclipse.che.api.core.model.workspace.runtime.MachineStatus;
 import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
+import org.eclipse.che.api.workspace.server.spi.InfrastructureException;
 
 /** @author Sergii Leshchenko */
 @Entity(name = "KubernetesMachine")
@@ -76,6 +80,8 @@ public class KubernetesMachineImpl implements Machine {
   @MapKeyColumn(name = "server_name", insertable = false, updatable = false)
   private Map<String, KubernetesServerImpl> servers;
 
+  private Future<Map<String, ServerImpl>> serverSupplier;
+
   public KubernetesMachineImpl() {}
 
   public KubernetesMachineImpl(
@@ -85,22 +91,14 @@ public class KubernetesMachineImpl implements Machine {
       String containerName,
       MachineStatus status,
       Map<String, String> attributes,
-      Map<String, ServerImpl> servers) {
+      Future<Map<String, ServerImpl>> servers) {
     this.machineId = new MachineId(workspaceId, machineName);
     this.podName = podName;
     this.containerName = containerName;
     this.status = status;
     this.attributes = attributes;
-    this.servers =
-        servers
-            .entrySet()
-            .stream()
-            .collect(
-                Collectors.toMap(
-                    Map.Entry::getKey,
-                    e ->
-                        new KubernetesServerImpl(
-                            workspaceId, machineName, e.getKey(), e.getValue())));
+    this.serverSupplier = servers;
+    this.servers = new LinkedHashMap<>();
   }
 
   public MachineStatus getStatus() {
@@ -127,7 +125,33 @@ public class KubernetesMachineImpl implements Machine {
     return attributes;
   }
 
-  public Map<String, KubernetesServerImpl> getServers() {
+  public Map<String, KubernetesServerImpl> getServers() throws ExecutionException {
+    try {
+      if (serverSupplier != null) {
+        Map<String, ServerImpl> servers = serverSupplier.get();
+        serverSupplier = null;
+        this.servers =
+            servers
+                .entrySet()
+                .stream()
+                .collect(
+                    Collectors.toMap(
+                        Map.Entry::getKey,
+                        e ->
+                            new KubernetesServerImpl(
+                                getMachineId().workspaceId,
+                                getMachineId().machineName,
+                                e.getKey(),
+                                e.getValue())));
+      }
+      return internalGetServers();
+    } catch (InterruptedException e) { // TODO Auto-generated catch block
+        Thread.currentThread().interrupt();
+        throw new ExecutionException("Waiting for servers was interrupted", e);
+    }
+  }
+
+  public Map<String, KubernetesServerImpl> internalGetServers() {
     return servers;
   }
 
@@ -153,7 +177,7 @@ public class KubernetesMachineImpl implements Machine {
         && Objects.equals(containerName, that.containerName)
         && Objects.equals(status, that.status)
         && getAttributes().equals(that.getAttributes())
-        && getServers().equals(that.getServers());
+        && internalGetServers().equals(that.internalGetServers());
   }
 
   @Override
@@ -164,7 +188,7 @@ public class KubernetesMachineImpl implements Machine {
     hash = 31 * hash + Objects.hashCode(containerName);
     hash = 31 * hash + Objects.hashCode(status);
     hash = 31 * hash + getAttributes().hashCode();
-    hash = 31 * hash + getServers().hashCode();
+    hash = 31 * hash + internalGetServers().hashCode();
     return hash;
   }
 

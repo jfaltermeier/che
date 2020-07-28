@@ -23,6 +23,8 @@ import io.fabric8.kubernetes.client.dsl.Resource;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
@@ -79,7 +81,24 @@ public class KubernetesIngresses {
     }
   }
 
-  public Ingress wait(String name, long timeout, TimeUnit timeoutUnit, Predicate<Ingress> predicate)
+  public Future<Ingress> waitInFuture(
+      String name, long timeout, TimeUnit timeoutUnit, Predicate<Ingress> predicate)
+      throws InfrastructureException {
+    CompletableFuture<Ingress> result = new CompletableFuture<>();
+    ForkJoinPool.commonPool()
+        .execute(
+            () -> {
+              try {
+                result.complete(wait(name, timeout, timeoutUnit, predicate));
+              } catch (InfrastructureException e) {
+                result.completeExceptionally(e);
+              }
+            });
+    return result;
+  }
+
+  private Ingress wait(
+      String name, long timeout, TimeUnit timeoutUnit, Predicate<Ingress> predicate)
       throws InfrastructureException {
     CompletableFuture<Ingress> future = new CompletableFuture<>();
     Watch watch = null;
