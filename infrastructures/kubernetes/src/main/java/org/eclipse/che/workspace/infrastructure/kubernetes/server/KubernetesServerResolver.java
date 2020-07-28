@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-
 import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
 import org.eclipse.che.commons.annotation.Nullable;
 import org.eclipse.che.workspace.infrastructure.kubernetes.Annotations;
@@ -45,13 +44,13 @@ public class KubernetesServerResolver {
   private final Multimap<String, Service> services;
   private final Multimap<String, Ingress> ingresses;
   private IngressPathTransformInverter pathTransformInverter;
-private List<Future<Ingress>> creatingIngresses;
-boolean ingressesInitialised=false;
+  private List<Future<Ingress>> creatingIngresses;
+  boolean ingressesInitialised = false;
 
   public KubernetesServerResolver(
-      IngressPathTransformInverter pathTransformInverter,
       List<Service> services,
-      List<Future<Ingress>> ingresses) {
+      List<Future<Ingress>> ingresses,
+      IngressPathTransformInverter pathTransformInverter) {
     this.pathTransformInverter = pathTransformInverter;
     this.services = ArrayListMultimap.create();
     for (Service service : services) {
@@ -63,33 +62,56 @@ boolean ingressesInitialised=false;
     this.ingresses = ArrayListMultimap.create();
     this.creatingIngresses = ingresses;
   }
-  
-  private void initIngresses() throws InterruptedException, ExecutionException {
-	    try {
-			for (Future<Ingress> creatingIngress : creatingIngresses) {
-				Ingress ingress = creatingIngress.get();
-			    String machineName =
-			        Annotations.newDeserializer(ingress.getMetadata().getAnnotations()).machineName();
-			    this.ingresses.put(machineName, ingress);
-			  }
-		} finally {
-			ingressesInitialised=true;
-		}
+
+  public KubernetesServerResolver(
+      IngressPathTransformInverter pathTransformInverter,
+      List<Service> services,
+      List<Ingress> ingresses) {
+    this.pathTransformInverter = pathTransformInverter;
+    this.services = ArrayListMultimap.create();
+    for (Service service : services) {
+      String machineName =
+          Annotations.newDeserializer(service.getMetadata().getAnnotations()).machineName();
+      this.services.put(machineName, service);
+    }
+
+    this.ingresses = ArrayListMultimap.create();
+    for (Ingress ingress : ingresses) {
+      String machineName =
+          Annotations.newDeserializer(ingress.getMetadata().getAnnotations()).machineName();
+      this.ingresses.put(machineName, ingress);
+    }
+    ingressesInitialised = true;
   }
-  
+
+  private void initIngresses() throws InterruptedException, ExecutionException {
+    try {
+      for (Future<Ingress> creatingIngress : creatingIngresses) {
+        Ingress ingress = creatingIngress.get();
+        String machineName =
+            Annotations.newDeserializer(ingress.getMetadata().getAnnotations()).machineName();
+        this.ingresses.put(machineName, ingress);
+      }
+    } finally {
+      ingressesInitialised = true;
+    }
+  }
 
   /**
    * Resolves servers by the specified machine name.
    *
    * @param machineName machine to resolve servers
    * @return resolved servers
- * @throws ExecutionException 
- * @throws InterruptedException 
+   * @throws ExecutionException
+   * @throws InterruptedException
    */
-  public Map<String, ServerImpl> resolve(String machineName) throws InterruptedException, ExecutionException {
+  public Map<String, ServerImpl> resolve(String machineName) {
     Map<String, ServerImpl> servers = new HashMap<>();
     fillInternalServers(machineName, servers);
-    fillExternalServers(machineName, servers);
+    try {
+      fillExternalServers(machineName, servers);
+    } catch (InterruptedException | ExecutionException e) {
+    }
     return servers;
   }
 
@@ -97,10 +119,11 @@ boolean ingressesInitialised=false;
     services.get(machineName).forEach(service -> fillServiceServers(service, servers));
   }
 
-  protected void fillExternalServers(String machineName, Map<String, ServerImpl> servers) throws InterruptedException, ExecutionException {
-	  if(!ingressesInitialised) {
-		  initIngresses();
-	  }
+  protected void fillExternalServers(String machineName, Map<String, ServerImpl> servers)
+      throws InterruptedException, ExecutionException {
+    if (!ingressesInitialised) {
+      initIngresses();
+    }
     ingresses.get(machineName).forEach(ingress -> fillIngressServers(ingress, servers));
   }
 

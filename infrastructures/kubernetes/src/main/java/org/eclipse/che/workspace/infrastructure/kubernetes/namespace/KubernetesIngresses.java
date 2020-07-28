@@ -97,8 +97,7 @@ public class KubernetesIngresses {
     return result;
   }
 
-  private Ingress wait(
-      String name, long timeout, TimeUnit timeoutUnit, Predicate<Ingress> predicate)
+  public Ingress wait(String name, long timeout, TimeUnit timeoutUnit, Predicate<Ingress> predicate)
       throws InfrastructureException {
     CompletableFuture<Ingress> future = new CompletableFuture<>();
     Watch watch = null;

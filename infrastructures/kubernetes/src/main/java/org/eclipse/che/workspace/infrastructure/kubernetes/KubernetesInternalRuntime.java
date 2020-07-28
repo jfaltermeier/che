@@ -67,10 +67,10 @@ import org.eclipse.che.api.workspace.server.hc.ServersChecker;
 import org.eclipse.che.api.workspace.server.hc.ServersCheckerFactory;
 import org.eclipse.che.api.workspace.server.hc.probe.ProbeResult;
 import org.eclipse.che.api.workspace.server.hc.probe.ProbeResult.ProbeStatus;
-import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
 import org.eclipse.che.api.workspace.server.hc.probe.ProbeScheduler;
 import org.eclipse.che.api.workspace.server.hc.probe.WorkspaceProbes;
 import org.eclipse.che.api.workspace.server.hc.probe.WorkspaceProbesFactory;
+import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
 import org.eclipse.che.api.workspace.server.spi.InfrastructureException;
 import org.eclipse.che.api.workspace.server.spi.InternalInfrastructureException;
 import org.eclipse.che.api.workspace.server.spi.InternalRuntime;
@@ -421,15 +421,9 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
       final CompletableFuture<Void> serversAndProbesFuture = new CompletableFuture<>();
       final String machineName = machine.getName();
       final RuntimeIdentity runtimeId = getContext().getIdentity();
-      ServersChecker serverCheck;
-      try {
-        serverCheck = serverCheckerFactory.create(runtimeId, machineName, machine.getServers());
-      } catch (ExecutionException e1) { 
-          serversAndProbesFuture.completeExceptionally(e1);
-          TracingTags.setErrorStatus(tracingSpan, e1);
-          tracingSpan.finish();
-          return serversAndProbesFuture;
-      }
+      ServersChecker serverCheck =
+          serverCheckerFactory.create(runtimeId, machineName, machine.getServers());
+
       final CompletableFuture<?> serversReadyFuture;
       LOG.debug(
           "Performing servers check for machine '{}' in workspace '{}'",
@@ -467,9 +461,10 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
                       new ServerLivenessHandler());
                 } catch (InfrastructureException iex) {
                   serversAndProbesFuture.completeExceptionally(iex);
-                } catch (ExecutionException e) {
-                  serversAndProbesFuture.completeExceptionally(e);
                 }
+                //                catch (ExecutionException e) {
+                //                  serversAndProbesFuture.completeExceptionally(e);
+                //                }
                 serversAndProbesFuture.complete(null);
                 tracingSpan.finish();
               });
@@ -630,7 +625,7 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
     listenEvents();
 
     final KubernetesServerResolver serverResolver =
-        new KubernetesServerResolver(ingressPathTransformInverter, createdServices, readyIngresses);
+        new KubernetesServerResolver(createdServices, readyIngresses, ingressPathTransformInverter);
 
     doStartMachine(serverResolver);
   }
@@ -852,11 +847,12 @@ public class KubernetesInternalRuntime<E extends KubernetesEnvironment>
       ForkJoinPool.commonPool()
           .execute(
               () -> {
-                try {
-                  servers.complete(serverResolver.resolve(machineName));
-                } catch (InterruptedException | ExecutionException e) {
-                  servers.completeExceptionally(e);
-                }
+                //                try {
+                servers.complete(serverResolver.resolve(machineName));
+                //                }
+                //                catch (InterruptedException | ExecutionException e) {
+                //                  servers.completeExceptionally(e);
+                //                }
               });
       machines.put(
           getContext().getIdentity(),

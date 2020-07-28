@@ -18,6 +18,7 @@ import static org.eclipse.che.api.core.model.workspace.WorkspaceStatus.STOPPING;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import org.eclipse.che.api.core.NotFoundException;
@@ -359,8 +360,11 @@ public abstract class AbstractTestWorkspaceServiceClient implements TestWorkspac
    *
    * @param machine machine to check
    * @return true when wsagent server is found in provided machine, false otherwise
+   * @throws ExecutionException
+   * @throws InterruptedException
    */
-  public static boolean containsWsAgentServer(Machine machine) {
+  public static boolean containsWsAgentServer(Machine machine)
+      throws InterruptedException, ExecutionException {
     return machine.getServers().keySet().contains(Constants.SERVER_WS_AGENT_HTTP_REFERENCE);
   }
 }

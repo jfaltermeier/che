@@ -37,7 +37,6 @@ import javax.persistence.Table;
 import org.eclipse.che.api.core.model.workspace.runtime.Machine;
 import org.eclipse.che.api.core.model.workspace.runtime.MachineStatus;
 import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
-import org.eclipse.che.api.workspace.server.spi.InfrastructureException;
 
 /** @author Sergii Leshchenko */
 @Entity(name = "KubernetesMachine")
@@ -101,6 +100,31 @@ public class KubernetesMachineImpl implements Machine {
     this.servers = new LinkedHashMap<>();
   }
 
+  public KubernetesMachineImpl(
+      String workspaceId,
+      String machineName,
+      String podName,
+      String containerName,
+      MachineStatus status,
+      Map<String, String> attributes,
+      Map<String, ServerImpl> servers) {
+    this.machineId = new MachineId(workspaceId, machineName);
+    this.podName = podName;
+    this.containerName = containerName;
+    this.status = status;
+    this.attributes = attributes;
+    this.servers =
+        servers
+            .entrySet()
+            .stream()
+            .collect(
+                Collectors.toMap(
+                    Map.Entry::getKey,
+                    e ->
+                        new KubernetesServerImpl(
+                            workspaceId, machineName, e.getKey(), e.getValue())));
+  }
+
   public MachineStatus getStatus() {
     return status;
   }
@@ -125,7 +149,7 @@ public class KubernetesMachineImpl implements Machine {
     return attributes;
   }
 
-  public Map<String, KubernetesServerImpl> getServers() throws ExecutionException {
+  public Map<String, KubernetesServerImpl> getServers() {
     try {
       if (serverSupplier != null) {
         Map<String, ServerImpl> servers = serverSupplier.get();
@@ -145,10 +169,12 @@ public class KubernetesMachineImpl implements Machine {
                                 e.getValue())));
       }
       return internalGetServers();
-    } catch (InterruptedException e) { // TODO Auto-generated catch block
-        Thread.currentThread().interrupt();
-        throw new ExecutionException("Waiting for servers was interrupted", e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    } catch (ExecutionException e1) {
+
     }
+    return internalGetServers();
   }
 
   public Map<String, KubernetesServerImpl> internalGetServers() {

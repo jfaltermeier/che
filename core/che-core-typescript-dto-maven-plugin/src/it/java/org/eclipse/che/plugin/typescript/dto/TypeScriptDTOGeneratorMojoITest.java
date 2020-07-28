@@ -33,303 +33,333 @@ import java.util.stream.Stream;
 import static java.util.stream.Collectors.toList;
 
 /**
- * Integration test of TypeScriptDTOGeneratorMojo
- * It uses docker to launch TypeScript compiler and then launch JavaScript tests to ensure generator has worked correctly
+ * Integration test of TypeScriptDTOGeneratorMojo It uses docker to launch TypeScript compiler and
+ * then launch JavaScript tests to ensure generator has worked correctly
+ *
  * @author Florent Benoit
  */
 public class TypeScriptDTOGeneratorMojoITest {
 
-    /**
-     * Logger.
-     */
-    private static final Logger LOG = LoggerFactory.getLogger(TypeScriptDTOGeneratorMojoITest.class);
+  /** Logger. */
+  private static final Logger LOG = LoggerFactory.getLogger(TypeScriptDTOGeneratorMojoITest.class);
 
-    /**
-     * DTO Generated file
-     */
-    private static final String GENERATED_DTO_NAME = "my-typescript-test-module.ts";
+  /** DTO Generated file */
+  private static final String GENERATED_DTO_NAME = "my-typescript-test-module.ts";
 
-    private static final String GENERATED_DTO_DTS_NAME = "my-typescript-test-module.d.ts";
+  private static final String GENERATED_DTO_DTS_NAME = "my-typescript-test-module.d.ts";
 
-    /**
-     * DTO new name
-     */
-    private static final String DTO_FILENAME = "dto.ts";
+  /** DTO new name */
+  private static final String DTO_FILENAME = "dto.ts";
 
-    private static final String DTO_DTS_FILENAME = "dtoD.d.ts";
+  private static final String DTO_DTS_FILENAME = "dtoD.d.ts";
 
-    /**
-     * DTO test name
-     */
-    private static final String DTO_SPEC_FILENAME = "dto.spec.ts";
+  /** DTO test name */
+  private static final String DTO_SPEC_FILENAME = "dto.spec.ts";
 
-    /**
-     * Target folder of maven.
-     */
-    private Path buildDirectory;
+  /** Target folder of maven. */
+  private Path buildDirectory;
 
-    /**
-     * Path to the package.json file used to setup typescript compiler
-     */
-    private Path dtoSpecJsonPath;
+  /** Path to the package.json file used to setup typescript compiler */
+  private Path dtoSpecJsonPath;
 
-    /**
-     * Path to the package.json file used to setup typescript compiler
-     */
-    private Path packageJsonPath;
+  /** Path to the package.json file used to setup typescript compiler */
+  private Path packageJsonPath;
 
-    /**
-     * Root directory for our tests
-     */
-    private Path rootPath;
+  /** Root directory for our tests */
+  private Path rootPath;
 
-    /**
-     * Linux uid.
-     */
-    private String linuxUID;
+  /** Linux uid. */
+  private String linuxUID;
 
-    /**
-     * Linux gid.
-     */
-    private String linuxGID;
+  /** Linux gid. */
+  private String linuxGID;
 
-    /**
-     * Init folders
-     */
-    @BeforeClass
-    public void init() throws URISyntaxException, IOException, InterruptedException {
-        // setup packages
-        this.packageJsonPath = new File(TypeScriptDTOGeneratorMojoITest.class.getClassLoader().getResource("package.json").toURI()).toPath();
+  /** Init folders */
+  @BeforeClass
+  public void init() throws URISyntaxException, IOException, InterruptedException {
+    // setup packages
+    this.packageJsonPath =
+        new File(
+                TypeScriptDTOGeneratorMojoITest.class
+                    .getClassLoader()
+                    .getResource("package.json")
+                    .toURI())
+            .toPath();
 
-        this.rootPath = this.packageJsonPath.getParent();
+    this.rootPath = this.packageJsonPath.getParent();
 
-        // target folder
-        String buildDirectoryProperty = System.getProperty("buildDirectory");
-        if (buildDirectoryProperty != null) {
-            buildDirectory = new File(buildDirectoryProperty).toPath();
-        } else {
-            buildDirectory = packageJsonPath.getParent().getParent();
-        }
-
-        LOG.info("Using building directory {0}", buildDirectory);
+    // target folder
+    String buildDirectoryProperty = System.getProperty("buildDirectory");
+    if (buildDirectoryProperty != null) {
+      buildDirectory = new File(buildDirectoryProperty).toPath();
+    } else {
+      buildDirectory = packageJsonPath.getParent().getParent();
     }
 
-    /**
-     * Generates a docker exec command used to launch node commands. Uses podman if present on the
-     * system.
-     *
-     * @return list of command parameters
-     */
-    protected List<String> getDockerExec() throws IOException, InterruptedException {
-        // setup command line
-        List<String> command = new ArrayList<>();
-        if (hasPodman()) {
-            command.add("podman");
-        } else {
-            command.add("docker");
-        }
-        command.add("run");
-        command.add("--rm");
-        command.add("-v");
-        command.add(rootPath.toString() + ":/usr/src/app");
-        command.add("-w");
-        command.add("/usr/src/app");
-        command.add("node:6");
-        command.add("/bin/sh");
-        command.add("-c");
+    LOG.info("Using building directory {0}", buildDirectory);
+  }
 
-        return command;
+  /**
+   * Generates a docker exec command used to launch node commands. Uses podman if present on the
+   * system.
+   *
+   * @return list of command parameters
+   */
+  protected List<String> getDockerExec() throws IOException, InterruptedException {
+    // setup command line
+    List<String> command = new ArrayList<>();
+    if (hasPodman()) {
+      command.add("podman");
+    } else {
+      command.add("docker");
+    }
+    command.add("run");
+    command.add("--rm");
+    command.add("-v");
+    command.add(rootPath.toString() + ":/usr/src/app");
+    command.add("-w");
+    command.add("/usr/src/app");
+    command.add("node:6");
+    command.add("/bin/sh");
+    command.add("-c");
+
+    return command;
+  }
+
+  /** Get UID of current user (used on Linux) */
+  protected String getUid() throws IOException, InterruptedException {
+    if (this.linuxUID == null) {
+      // grab user id
+      ProcessBuilder uidProcessBuilder = new ProcessBuilder("id", "-u");
+      Process processId = uidProcessBuilder.start();
+      int resultId = processId.waitFor();
+      String uid = "";
+      try (BufferedReader outReader =
+          new BufferedReader(new InputStreamReader(processId.getInputStream()))) {
+        uid = String.join(System.lineSeparator(), outReader.lines().collect(toList()));
+      } catch (Exception error) {
+        throw new IllegalStateException("Unable to get uid" + uid);
+      }
+
+      if (resultId != 0) {
+        throw new IllegalStateException("Unable to get uid" + uid);
+      }
+
+      try {
+        Integer.valueOf(uid);
+      } catch (NumberFormatException e) {
+        throw new IllegalStateException("The uid is not a number" + uid);
+      }
+      this.linuxUID = uid;
     }
 
-    /**
-     * Get UID of current user (used on Linux)
-     */
-    protected String getUid() throws IOException, InterruptedException {
-        if (this.linuxUID == null) {
-            // grab user id
-            ProcessBuilder uidProcessBuilder = new ProcessBuilder("id", "-u");
-            Process processId = uidProcessBuilder.start();
-            int resultId = processId.waitFor();
-            String uid = "";
-            try (BufferedReader outReader = new BufferedReader(new InputStreamReader(processId.getInputStream()))) {
-                uid = String.join(System.lineSeparator(), outReader.lines().collect(toList()));
-            } catch (Exception error) {
-                throw new IllegalStateException("Unable to get uid" + uid);
-            }
+    return this.linuxUID;
+  }
 
-            if (resultId != 0) {
-                throw new IllegalStateException("Unable to get uid" + uid);
-            }
+  /** Get GID of current user (used on Linux) */
+  protected String getGid() throws IOException, InterruptedException {
+    if (this.linuxGID == null) {
 
-            try {
-                Integer.valueOf(uid);
-            } catch (NumberFormatException e) {
-                throw new IllegalStateException("The uid is not a number" + uid);
-            }
-            this.linuxUID = uid;
-        }
+      ProcessBuilder gidProcessBuilder = new ProcessBuilder("id", "-g");
+      Process processGid = gidProcessBuilder.start();
+      int resultGid = processGid.waitFor();
+      String gid = "";
+      try (BufferedReader outReader =
+          new BufferedReader(new InputStreamReader(processGid.getInputStream()))) {
+        gid = String.join(System.lineSeparator(), outReader.lines().collect(toList()));
+      } catch (Exception error) {
+        throw new IllegalStateException("Unable to get gid" + gid);
+      }
 
-        return this.linuxUID;
+      if (resultGid != 0) {
+        throw new IllegalStateException("Unable to get gid" + gid);
+      }
+
+      try {
+        Integer.valueOf(gid);
+      } catch (NumberFormatException e) {
+        throw new IllegalStateException("The uid is not a number" + gid);
+      }
+
+      this.linuxGID = gid;
     }
 
-    /**
-     * Get GID of current user (used on Linux)
-     */
-    protected String getGid() throws IOException, InterruptedException {
-        if (this.linuxGID == null) {
+    return this.linuxGID;
+  }
 
-            ProcessBuilder gidProcessBuilder = new ProcessBuilder("id", "-g");
-            Process processGid = gidProcessBuilder.start();
-            int resultGid = processGid.waitFor();
-            String gid = "";
-            try (BufferedReader outReader = new BufferedReader(new InputStreamReader(processGid.getInputStream()))) {
-                gid = String.join(System.lineSeparator(), outReader.lines().collect(toList()));
-            } catch (Exception error) {
-                throw new IllegalStateException("Unable to get gid" + gid);
-            }
+  /**
+   * Setup typescript compiler by downloading the dependencies
+   *
+   * @throws IOException if unable to start process
+   * @throws InterruptedException if unable to wait the end of the process
+   */
+  @Test(groups = {"tools"})
+  protected void installTypeScriptCompiler() throws IOException, InterruptedException {
 
-            if (resultGid != 0) {
-                throw new IllegalStateException("Unable to get gid" + gid);
-            }
+    // setup command line
+    List<String> command = getDockerExec();
 
-            try {
-                Integer.valueOf(gid);
-            } catch (NumberFormatException e) {
-                throw new IllegalStateException("The uid is not a number" + gid);
-            }
-
-            this.linuxGID = gid;
-        }
-
-        return this.linuxGID;
+    // avoid root permissions in generated files
+    if (SystemInfo.isLinux()) {
+      command.add(wrapLinuxCommand("npm install"));
+    } else {
+      command.add("npm install");
     }
 
-    /**
-     * Setup typescript compiler by downloading the dependencies
-     * @throws IOException if unable to start process
-     * @throws InterruptedException if unable to wait the end of the process
-     */
-    @Test(groups = {"tools"})
-    protected void installTypeScriptCompiler() throws IOException, InterruptedException {
+    // setup typescript compiler
+    ProcessBuilder processBuilder =
+        new ProcessBuilder()
+            .command(command)
+            .directory(rootPath.toFile())
+            .redirectErrorStream(true)
+            .inheritIO();
+    Process process = processBuilder.start();
 
-        // setup command line
-        List<String> command = getDockerExec();
+    LOG.info("Installing TypeScript compiler in {0}", rootPath);
+    int resultProcess = process.waitFor();
 
-        // avoid root permissions in generated files
-        if (SystemInfo.isLinux()) {
-            command.add(wrapLinuxCommand("npm install"));
-        } else {
-            command.add("npm install");
-        }
+    if (resultProcess != 0) {
+      throw new IllegalStateException("Install of TypeScript has failed");
+    }
+    LOG.info("TypeScript compiler installed.");
+  }
 
-        // setup typescript compiler
-        ProcessBuilder processBuilder = new ProcessBuilder().command(command).directory(rootPath.toFile()).redirectErrorStream(true).inheritIO();
-        Process process = processBuilder.start();
+  /**
+   * Wrap the given command into a command with chown. Also add group/user that match host
+   * environment if not exists
+   *
+   * @param command the command to wrap
+   * @return an updated command with chown applied on it
+   */
+  protected String wrapLinuxCommand(String command) throws IOException, InterruptedException {
+    if (hasPodman()) {
+      LOG.debug("using podman, don't need to wrap anything");
+      return command;
+    }
+    String setGroup =
+        "export GROUP_NAME=`(getent group "
+            + getGid()
+            + " || (groupadd -g "
+            + getGid()
+            + " user && echo user:x:"
+            + getGid()
+            + ")) | cut -d: -f1`";
+    String setUser =
+        "export USER_NAME=`(getent passwd "
+            + getUid()
+            + " || (useradd -u "
+            + getUid()
+            + " -g ${GROUP_NAME} user && echo user:x:"
+            + getGid()
+            + ")) | cut -d: -f1`";
+    String chownCommand = "chown --silent -R ${USER_NAME}.${GROUP_NAME} /usr/src/app || true";
+    return setGroup
+        + " && "
+        + setUser
+        + " && "
+        + chownCommand
+        + " && "
+        + command
+        + " && "
+        + chownCommand;
+  }
 
-        LOG.info("Installing TypeScript compiler in {0}", rootPath);
-        int resultProcess = process.waitFor();
+  /**
+   * Starts tests by compiling first generated DTO from maven plugin
+   *
+   * @throws IOException if unable to start process
+   * @throws InterruptedException if unable to wait the end of the process
+   */
+  @Test(dependsOnGroups = "tools")
+  public void compileDTOAndLaunchTests() throws IOException, InterruptedException {
 
-        if (resultProcess != 0) {
-            throw new IllegalStateException("Install of TypeScript has failed");
-        }
-        LOG.info("TypeScript compiler installed.");
+    // search DTO
+    Path p = this.buildDirectory;
+    final int maxDepth = 10;
+    Stream<Path> matches =
+        java.nio.file.Files.find(
+            p,
+            maxDepth,
+            (path, basicFileAttributes) ->
+                path.getFileName().toString().equals(GENERATED_DTO_NAME));
 
+    // take first
+    Optional<Path> optionalPath = matches.findFirst();
+    if (!optionalPath.isPresent()) {
+      throw new IllegalStateException(
+          "Unable to find generated DTO file named '"
+              + GENERATED_DTO_NAME
+              + "'. Check it has been generated first");
     }
 
+    Path generatedDtoPath = optionalPath.get();
 
-    /**
-     * Wrap the given command into a command with chown. Also add group/user that match host environment if not exists
-     * @param command the command to wrap
-     * @return an updated command with chown applied on it
-     */
-    protected String wrapLinuxCommand(String command) throws IOException, InterruptedException {
-        if (hasPodman()) {
-            LOG.debug("using podman, don't need to wrap anything");
-            return command;
-        }
-        String setGroup =
-            "export GROUP_NAME=`(getent group " + getGid() + " || (groupadd -g " + getGid()
-                + " user && echo user:x:" + getGid() + ")) | cut -d: -f1`";
-        String setUser =
-            "export USER_NAME=`(getent passwd " + getUid() + " || (useradd -u " + getUid()
-                + " -g ${GROUP_NAME} user && echo user:x:" + getGid() + ")) | cut -d: -f1`";
-        String chownCommand = "chown --silent -R ${USER_NAME}.${GROUP_NAME} /usr/src/app || true";
-        return setGroup + " && " + setUser + " && " + chownCommand + " && " + command + " && "
-            + chownCommand;
+    // copy it in test resources folder where package.json is
+    java.nio.file.Files.copy(
+        generatedDtoPath, this.rootPath.resolve(DTO_FILENAME), StandardCopyOption.REPLACE_EXISTING);
+
+    matches =
+        java.nio.file.Files.find(
+            p,
+            maxDepth,
+            (path, basicFileAttributes) ->
+                path.getFileName().toString().equals(GENERATED_DTO_DTS_NAME));
+
+    // take first
+    optionalPath = matches.findFirst();
+    if (!optionalPath.isPresent()) {
+      throw new IllegalStateException(
+          "Unable to find generated DTO file named '"
+              + GENERATED_DTO_DTS_NAME
+              + "'. Check it has been generated first");
     }
 
+    generatedDtoPath = optionalPath.get();
 
-    /**
-     * Starts tests by compiling first generated DTO from maven plugin
-     * @throws IOException if unable to start process
-     * @throws InterruptedException if unable to wait the end of the process
-     */
-    @Test(dependsOnGroups = "tools")
-    public void compileDTOAndLaunchTests() throws IOException, InterruptedException {
+    // copy it in test resources folder where package.json is
+    java.nio.file.Files.copy(
+        generatedDtoPath,
+        this.rootPath.resolve(DTO_DTS_FILENAME),
+        StandardCopyOption.REPLACE_EXISTING);
 
-        // search DTO
-        Path p = this.buildDirectory;
-        final int maxDepth = 10;
-        Stream<Path> matches = java.nio.file.Files.find( p, maxDepth, (path, basicFileAttributes) -> path.getFileName().toString().equals(GENERATED_DTO_NAME));
+    // setup command line
+    List<String> command = getDockerExec();
 
-        // take first
-        Optional<Path> optionalPath = matches.findFirst();
-        if (!optionalPath.isPresent()) {
-            throw new IllegalStateException("Unable to find generated DTO file named '" + GENERATED_DTO_NAME + "'. Check it has been generated first");
-        }
-
-        Path generatedDtoPath = optionalPath.get();
-
-        //copy it in test resources folder where package.json is
-        java.nio.file.Files.copy(generatedDtoPath, this.rootPath.resolve(DTO_FILENAME), StandardCopyOption.REPLACE_EXISTING);
-
-        matches = java.nio.file.Files.find( p, maxDepth, (path, basicFileAttributes) -> path.getFileName().toString().equals(GENERATED_DTO_DTS_NAME));
-
-        // take first
-        optionalPath = matches.findFirst();
-        if (!optionalPath.isPresent()) {
-            throw new IllegalStateException("Unable to find generated DTO file named '" + GENERATED_DTO_DTS_NAME + "'. Check it has been generated first");
-        }
-
-        generatedDtoPath = optionalPath.get();
-
-        //copy it in test resources folder where package.json is
-        java.nio.file.Files.copy(generatedDtoPath, this.rootPath.resolve(DTO_DTS_FILENAME), StandardCopyOption.REPLACE_EXISTING);
-
-        // setup command line
-        List<String> command = getDockerExec();
-
-        // avoid root permissions in generated files
-        if (SystemInfo.isLinux()) {
-            command.add(wrapLinuxCommand("npm test"));
-        } else {
-            command.add("npm test");
-        }
-        // setup typescript compiler
-        ProcessBuilder processBuilder = new ProcessBuilder().command(command).directory(rootPath.toFile()).redirectErrorStream(true).inheritIO();
-        Process process = processBuilder.start();
-
-        LOG.info("Starting TypeScript tests...");
-        int resultProcess = process.waitFor();
-
-        if (resultProcess != 0) {
-            throw new IllegalStateException("DTO has failed to compile");
-        }
-        LOG.info("TypeScript tests OK");
-
+    // avoid root permissions in generated files
+    if (SystemInfo.isLinux()) {
+      command.add(wrapLinuxCommand("npm test"));
+    } else {
+      command.add("npm test");
     }
+    // setup typescript compiler
+    ProcessBuilder processBuilder =
+        new ProcessBuilder()
+            .command(command)
+            .directory(rootPath.toFile())
+            .redirectErrorStream(true)
+            .inheritIO();
+    Process process = processBuilder.start();
 
-    private boolean hasPodman() throws InterruptedException, IOException {
-        if (SystemInfo.isLinux()) {
-            ProcessBuilder podmanProcessBuilder = new ProcessBuilder("which", "podman");
-            Process podmanProcess = podmanProcessBuilder.start();
-            if (podmanProcess.waitFor(1, TimeUnit.SECONDS)) {
-                return podmanProcess.exitValue() == 0;
-            } else {
-                return false;
-            }
-        } else {
-            return false;
-        }
+    LOG.info("Starting TypeScript tests...");
+    int resultProcess = process.waitFor();
+
+    if (resultProcess != 0) {
+      throw new IllegalStateException("DTO has failed to compile");
     }
+    LOG.info("TypeScript tests OK");
+  }
+
+  private boolean hasPodman() throws InterruptedException, IOException {
+    if (SystemInfo.isLinux()) {
+      ProcessBuilder podmanProcessBuilder = new ProcessBuilder("which", "podman");
+      Process podmanProcess = podmanProcessBuilder.start();
+      if (podmanProcess.waitFor(1, TimeUnit.SECONDS)) {
+        return podmanProcess.exitValue() == 0;
+      } else {
+        return false;
+      }
+    } else {
+      return false;
+    }
+  }
 }

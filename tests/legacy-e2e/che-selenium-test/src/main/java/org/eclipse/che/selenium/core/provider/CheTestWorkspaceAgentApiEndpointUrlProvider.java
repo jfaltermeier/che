@@ -17,6 +17,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import java.net.URL;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import org.eclipse.che.api.core.model.workspace.runtime.Machine;
 import org.eclipse.che.api.core.model.workspace.runtime.Server;
 import org.eclipse.che.api.core.rest.HttpJsonRequestFactory;
@@ -54,8 +55,11 @@ public class CheTestWorkspaceAgentApiEndpointUrlProvider
    *
    * @param machine machine to check
    * @return true when wsagent server is found in provided machine, false otherwise
+   * @throws ExecutionException
+   * @throws InterruptedException
    */
-  public static boolean containsWsAgentServer(Machine machine) {
+  public static boolean containsWsAgentServer(Machine machine)
+      throws InterruptedException, ExecutionException {
     return machine.getServers().keySet().contains(Constants.SERVER_WS_AGENT_HTTP_REFERENCE);
   }
 }

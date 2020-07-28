@@ -37,10 +37,11 @@ public interface Machine {
    *     }
    * }
    * </pre>
- * @throws ExecutionException 
- * @throws InterruptedException 
+   *
+   * @throws ExecutionException
+   * @throws InterruptedException
    */
-  Map<String, ? extends Server> getServers() throws InterruptedException, ExecutionException;
+  Map<String, ? extends Server> getServers();
 
   MachineStatus getStatus();
 }
