@@ -41,7 +41,7 @@ init() {
 
   ORGANIZATION="quay.io/eclipse"
   PREFIX="che"
-  TAG="nightly"
+  TAG="7.16.0"
   SKIP_TESTS=false
   NAME="che"
   ARGS=""

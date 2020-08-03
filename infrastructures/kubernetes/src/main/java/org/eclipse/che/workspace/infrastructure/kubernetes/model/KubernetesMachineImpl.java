@@ -34,6 +34,7 @@ import javax.persistence.NamedQueries;
 import javax.persistence.NamedQuery;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
+import javax.persistence.Transient;
 import org.eclipse.che.api.core.model.workspace.runtime.Machine;
 import org.eclipse.che.api.core.model.workspace.runtime.MachineStatus;
 import org.eclipse.che.api.workspace.server.model.impl.ServerImpl;
@@ -71,15 +72,9 @@ public class KubernetesMachineImpl implements Machine {
   @Column(name = "attribute")
   private Map<String, String> attributes;
 
-  @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
-  @JoinColumns({
-    @JoinColumn(name = "workspace_id", referencedColumnName = "workspace_id"),
-    @JoinColumn(name = "machine_name", referencedColumnName = "machine_name")
-  })
-  @MapKeyColumn(name = "server_name", insertable = false, updatable = false)
   private Map<String, KubernetesServerImpl> servers;
 
-  private Future<Map<String, ServerImpl>> serverSupplier;
+  @Transient private Future<Map<String, ServerImpl>> serverSupplier;
 
   public KubernetesMachineImpl() {}
 
@@ -96,7 +91,7 @@ public class KubernetesMachineImpl implements Machine {
     this.containerName = containerName;
     this.status = status;
     this.attributes = attributes;
-    this.serverSupplier = servers;
+    this.setServerSupplier(servers);
     this.servers = new LinkedHashMap<>();
   }
 
@@ -149,11 +144,17 @@ public class KubernetesMachineImpl implements Machine {
     return attributes;
   }
 
+  @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
+  @JoinColumns({
+    @JoinColumn(name = "workspace_id", referencedColumnName = "workspace_id"),
+    @JoinColumn(name = "machine_name", referencedColumnName = "machine_name")
+  })
+  @MapKeyColumn(name = "server_name", insertable = false, updatable = false)
   public Map<String, KubernetesServerImpl> getServers() {
     try {
-      if (serverSupplier != null) {
-        Map<String, ServerImpl> servers = serverSupplier.get();
-        serverSupplier = null;
+      if (getServerSupplier() != null) {
+        Map<String, ServerImpl> servers = getServerSupplier().get();
+        setServerSupplier(null);
         this.servers =
             servers
                 .entrySet()
@@ -236,6 +237,14 @@ public class KubernetesMachineImpl implements Machine {
         + ", servers="
         + servers
         + '}';
+  }
+
+  public Future<Map<String, ServerImpl>> getServerSupplier() {
+    return serverSupplier;
+  }
+
+  public void setServerSupplier(Future<Map<String, ServerImpl>> serverSupplier) {
+    this.serverSupplier = serverSupplier;
   }
 
   @Embeddable
